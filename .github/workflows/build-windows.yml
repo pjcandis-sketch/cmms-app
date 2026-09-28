@@ -22,21 +22,39 @@ jobs:
       - name: Install dependencies
         working-directory: v2
         run: npm install
-      - name: Generate valid icon
+      - name: Generate app icons
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path v2/src-tauri/icons | Out-Null
           Add-Type -AssemblyName System.Drawing
-          $bmp = New-Object System.Drawing.Bitmap 32,32
-          $g = [System.Drawing.Graphics]::FromImage($bmp)
-          $g.Clear([System.Drawing.Color]::FromArgb(37,99,235))
-          $g.Dispose()
-          $icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+          $source = [System.Drawing.Image]::FromFile((Join-Path $PWD 'v2/src/assets/logo.png'))
+
+          function Save-AppPng([int]$size, [string]$name) {
+            $bitmap = New-Object System.Drawing.Bitmap $size,$size
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            $graphics.Clear([System.Drawing.Color]::Transparent)
+            $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $graphics.DrawImage($source, 0, 0, $size, $size)
+            $graphics.Dispose()
+            $bitmap.Save((Join-Path $PWD "v2/src-tauri/icons/$name"), [System.Drawing.Imaging.ImageFormat]::Png)
+            $bitmap.Dispose()
+          }
+
+          Save-AppPng 32 '32x32.png'
+          Save-AppPng 128 '128x128.png'
+          Save-AppPng 256 '128x128@2x.png'
+
+          $iconBitmap = New-Object System.Drawing.Bitmap 32,32
+          $iconGraphics = [System.Drawing.Graphics]::FromImage($iconBitmap)
+          $iconGraphics.DrawImage($source, 0, 0, 32, 32)
+          $iconGraphics.Dispose()
+          $icon = [System.Drawing.Icon]::FromHandle($iconBitmap.GetHicon())
           $stream = [System.IO.File]::Create((Join-Path $PWD 'v2/src-tauri/icons/icon.ico'))
           $icon.Save($stream)
           $stream.Close()
           $icon.Dispose()
-          $bmp.Dispose()
+          $iconBitmap.Dispose()
+          $source.Dispose()
       - name: Build NSIS installer
         working-directory: v2
         run: npm run tauri build -- --bundles nsis
