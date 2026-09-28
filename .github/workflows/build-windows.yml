@@ -21,6 +21,17 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Install dependencies
         run: npm install
+      - name: Generate placeholder icon
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/icons | Out-Null
+          Add-Type -AssemblyName System.Drawing
+          $bmp = New-Object System.Drawing.Bitmap 32,32
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.Clear([System.Drawing.Color]::FromArgb(37,99,235))
+          $g.Dispose()
+          $bmp.Save((Join-Path $PWD 'src-tauri/icons/icon.ico'), [System.Drawing.Imaging.ImageFormat]::Icon)
+          $bmp.Dispose()
       - name: Build NSIS installer
         run: npm run tauri build -- --bundles nsis
       - name: Upload installer
