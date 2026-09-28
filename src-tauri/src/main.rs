@@ -276,9 +276,9 @@ fn set_work_order_status(db: State<Db>, id: i64, status: String) -> Result<(), S
 
 // ---------- اجرای اپلیکیشن ----------
 fn main() {
-    let app_dir = tauri::path::BaseDirectory::AppData
-        .resolve("", &tauri::Config::default())
-        .expect("cannot resolve app data dir");
+    let app_dir = std::path::PathBuf::from(
+        std::env::var("APPDATA").expect("APPDATA not set")
+    ).join("com.cmms.app");
     std::fs::create_dir_all(&app_dir).expect("cannot create app data dir");
     let conn = Connection::open(app_dir.join("cmms.db")).expect("cannot open database");
     migrate(&conn).expect("migration failed");
