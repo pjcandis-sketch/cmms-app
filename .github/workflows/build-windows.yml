@@ -22,10 +22,21 @@ jobs:
       - name: Install dependencies
         working-directory: v2
         run: npm install
-      - name: Verify icon
+      - name: Generate valid icon
         shell: pwsh
         run: |
-          if (-not (Test-Path 'v2/src-tauri/icons/icon.ico')) { throw 'icon.ico missing' }
+          New-Item -ItemType Directory -Force -Path v2/src-tauri/icons | Out-Null
+          Add-Type -AssemblyName System.Drawing
+          $bmp = New-Object System.Drawing.Bitmap 32,32
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.Clear([System.Drawing.Color]::FromArgb(37,99,235))
+          $g.Dispose()
+          $icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+          $stream = [System.IO.File]::Create((Join-Path $PWD 'v2/src-tauri/icons/icon.ico'))
+          $icon.Save($stream)
+          $stream.Close()
+          $icon.Dispose()
+          $bmp.Dispose()
       - name: Build NSIS installer
         working-directory: v2
         run: npm run tauri build -- --bundles nsis
