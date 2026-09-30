@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { exportToExcel, printSection } from "../utils/export.js";
+import { hasPerm } from "../utils/permissions.js";
 
 const TYPES = [
   { id: "daily", label: "روزانه", color: "from-sky-400 to-blue-500", bg: "bg-blue-500" },
@@ -8,7 +9,7 @@ const TYPES = [
   { id: "monthly", label: "ماهانه", color: "from-amber-400 to-orange-500", bg: "bg-orange-500" },
 ];
 
-export default function Checklist({ machine }) {
+export default function Checklist({ user, machine }) {
   const [type, setType] = useState("daily");
   const [items, setItems] = useState([]);
   const [newItem, setNewItem] = useState("");
@@ -21,8 +22,12 @@ export default function Checklist({ machine }) {
 
   const addItem = async () => {
     if (!newItem.trim()) return;
-    await invoke("add_checklist_item", { machineId: machine.id, checkType: type, description: newItem });
-    setNewItem(""); load();
+    try {
+      await invoke("add_checklist_item", { machineId: machine.id, checkType: type, description: newItem });
+      setNewItem(""); load();
+    } catch (e) {
+      alert("خطا در افزودن آیتم: " + e);
+    }
   };
   const removeItem = async (id) => { await invoke("remove_checklist_item", { id }); load(); };
 
@@ -63,7 +68,8 @@ export default function Checklist({ machine }) {
           placeholder="آیتم جدید چک‌لیست..."
           value={newItem} onChange={(e) => setNewItem(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addItem()} />
-        <button onClick={addItem} className="bg-gradient-to-l from-cyan-500 to-blue-600 text-white px-5 rounded-xl font-medium hover:opacity-90 transition">افزودن</button>
+        <button onClick={addItem} disabled={!hasPerm(user, "checklist.write")}
+          className="bg-gradient-to-l from-cyan-500 to-blue-600 text-white px-5 rounded-xl font-medium hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed">افزودن</button>
       </div>
 
       <div id="checklist-body">
