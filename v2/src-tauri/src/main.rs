@@ -2611,7 +2611,7 @@ fn get_condition_points(db: State<Db>, asset_id: Option<i64>) -> Result<Vec<Cond
             is_active: row.get::<_, i64>(10)? == 1,
             latest_value: latest, latest_at: row.get(12)?, status,
         })
-    };
+    });
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
