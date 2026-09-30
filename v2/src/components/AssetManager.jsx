@@ -294,7 +294,6 @@ export default function AssetManager({ user, selected, onSelect }) {
             </ul>
           </div>
         )}
-      </div>
 
         {/* تاریخچه تغییرات */}
         {form.id && fieldHist.length > 0 && (
