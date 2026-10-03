@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
 use tauri::State;
+use tauri_plugin_dialog::DialogExt;
 
 const PERM_DEVICES: &str = "devices.write";
 const PERM_CHECKLIST: &str = "checklist.write";
@@ -1213,9 +1214,12 @@ fn delete_asset_document(db: State<Db>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn pick_file() -> Result<Option<String>, String> {
-    let path = tauri_plugin_dialog::FileDialogBuilder::new().pick_file();
-    Ok(path.map(|p| p.to_string_lossy().to_string()))
+async fn pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog().file().pick_file(move |path| {
+        let _ = tx.send(path.map(|p| p.to_string()));
+    });
+    rx.recv().map_err(|e| e.to_string())
 }
 
 // ---------- چک‌لیست ----------
@@ -1827,7 +1831,7 @@ fn get_pm_programs(db: State<Db>) -> Result<Vec<PmProgramRow>, String> {
             id: row.get(0)?, code: row.get(1)?, title: row.get(2)?, asset_id,
             asset_code: row.get(4)?, asset_name: row.get(5)?,
             job_plan_id: row.get(6)?, job_plan_title: row.get(7)?,
-            interval_value: interval, interval_unit: unit.clone(), interval_fa: unit_fa(&unit),
+            interval_value: interval, interval_unit: unit.clone(), interval_fa: unit_fa(&unit).to_string(),
             is_meter_based: is_meter,
             next_due_date, last_done_date: row.get(11)?, next_due_meter, last_done_meter: row.get(13)?,
             current_meter: current,
@@ -2286,21 +2290,21 @@ fn get_rca_detail(db: State<Db>, rca_id: i64) -> Result<(Vec<RcaWhy>, Vec<RcaAct
     let whys = {
         let mut stmt = conn.prepare("SELECT id, step, answer FROM rca_whys WHERE rca_id=?1 ORDER BY step")
             .map_err(|e| e.to_string())?;
-        stmt.query_map(params![rca_id], |row| {
+        let rows = stmt.query_map(params![rca_id], |row| {
             Ok(RcaWhy { id: row.get(0)?, step: row.get(1)?, answer: row.get(2)? })
-        }).map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        }).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
     };
     let actions = {
         let mut stmt = conn.prepare("SELECT id, description, responsible, due_date, status FROM rca_actions WHERE rca_id=?1 ORDER BY id")
             .map_err(|e| e.to_string())?;
-        stmt.query_map(params![rca_id], |row| {
+        let rows = stmt.query_map(params![rca_id], |row| {
             Ok(RcaAction {
                 id: row.get(0)?, description: row.get(1)?, responsible: row.get(2)?,
                 due_date: row.get(3)?, status: row.get(4)?,
             })
-        }).map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        }).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
     };
     Ok((whys, actions))
 }
@@ -2433,9 +2437,9 @@ fn get_kpis(db: State<Db>) -> Result<Kpis, String> {
             "SELECT failure_mode, COUNT(*) c FROM work_orders
              WHERE failure_mode != '' GROUP BY failure_mode ORDER BY c DESC LIMIT 5"
         ).map_err(|e| e.to_string())?;
-        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .map_err(|e| e.to_string())?
-            .collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
     };
 
     Ok(Kpis {
