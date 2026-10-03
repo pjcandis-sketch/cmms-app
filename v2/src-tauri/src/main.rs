@@ -1217,7 +1217,7 @@ fn delete_asset_document(db: State<Db>, id: i64) -> Result<(), String> {
 async fn pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let (tx, rx) = std::sync::mpsc::channel();
     app.dialog().file().pick_file(move |path| {
-        let _ = tx.send(path.map(|p| p.to_string_lossy().to_string()));
+        let _ = tx.send(path.map(|p| p.to_string()));
     });
     rx.recv().map_err(|e| e.to_string())
 }
@@ -1858,8 +1858,9 @@ fn save_pm_program(db: State<Db>, program: PmProgramInput) -> Result<i64, String
     }
     let is_meter = METER_UNITS.contains(&unit.as_str());
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let exists: bool = conn.query_row("SELECT COUNT(*) FROM assets WHERE id=?1 AND level='equipment'", params![program.asset_id], |r| r.get(0))
-        .map_err(|e| e.to_string())? > 0;
+    let asset_count: i64 = conn.query_row("SELECT COUNT(*) FROM assets WHERE id=?1 AND level='equipment'", params![program.asset_id], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    let exists = asset_count > 0;
     if !exists {
         return Err("تجهیز انتخاب‌شده معتبر نیست.".to_string());
     }
