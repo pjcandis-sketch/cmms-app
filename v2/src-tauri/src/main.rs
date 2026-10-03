@@ -969,7 +969,7 @@ fn get_assets(db: State<Db>) -> Result<Vec<AssetRow>, String> {
             criticality: row.get(7)?, status: row.get(8)?, location: row.get(9)?,
             serial_number: row.get(10)?, model: row.get(11)?, manufacturer: row.get(12)?,
             manufacturer_phone: row.get(13)?, manufacturer_email: row.get(14)?,
-            manufacturer_website: row.get(15)?, purchase_date: purchase, warranty_months: months,
+             manufacturer_website: row.get(15)?, purchase_date: purchase.clone(), warranty_months: months,
             commission_date: row.get(18)?, description: row.get(19)?,
             specs: serde_json::from_str(&specs_str).unwrap_or(serde_json::json!({})),
             path: row.get(21)?, sort_order: row.get(22)?, children_count: row.get(23)?,
@@ -1217,7 +1217,7 @@ fn delete_asset_document(db: State<Db>, id: i64) -> Result<(), String> {
 async fn pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let (tx, rx) = std::sync::mpsc::channel();
     app.dialog().file().pick_file(move |path| {
-        let _ = tx.send(path.map(|p| p.to_string()));
+        let _ = tx.send(path.map(|p| p.to_string_lossy().to_string()));
     });
     rx.recv().map_err(|e| e.to_string())
 }
