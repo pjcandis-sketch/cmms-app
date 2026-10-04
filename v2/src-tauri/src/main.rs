@@ -12,8 +12,8 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
-use tauri_plugin_dialog::DialogExt;
 use tauri::State;
+use tauri_plugin_dialog::DialogExt;
 
 const PERM_DEVICES: &str = "devices.write";
 const PERM_CHECKLIST: &str = "checklist.write";
@@ -716,23 +716,6 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     }
     conn.execute("UPDATE work_orders SET status='درخواست' WHERE status='باز'", []).ok();
 
-    // داده اولیه دارایی: اگر هیچ Site وجود ندارد، یک کارخانه پیش‌فرض + سیستم عمومی ساخته می‌شود
-    // تا کاربر بتواند بلافاصله تجهیز ثبت کند (معماری سلسله‌مراتبی حفظ می‌شود)
-    let site_count: i64 = conn.query_row("SELECT COUNT(*) FROM assets WHERE level='site'", [], |r| r.get(0))?;
-    if site_count == 0 {
-        conn.execute("INSERT INTO assets (code, name, level, path) VALUES ('SITE-01', 'کارخانه اصلی', 'site', '/SITE-01')", [])?;
-    }
-    let sys_count: i64 = conn.query_row("SELECT COUNT(*) FROM assets WHERE level='system'", [], |r| r.get(0))?;
-    if sys_count == 0 {
-        let (site_id, site_path): (i64, String) = conn.query_row(
-            "SELECT id, path FROM assets WHERE level='site' ORDER BY id LIMIT 1", [],
-            |r| Ok((r.get(0)?, r.get(1)?)))?;
-        conn.execute(
-            "INSERT INTO assets (code, name, parent_id, level, path) VALUES ('SYS-GEN', 'سیستم‌های عمومی', ?1, 'system', ?2)",
-            params![site_id, format!("{}/SYS-GEN", site_path)],
-        )?;
-    }
-
     // طبقه‌بندی استاندارد تجهیزات (الهام از ISO 14224)
     let classes = [
         ("PM", "پمپ", "دوار"), ("GB", "گیربکس", "دوار"), ("CM", "کمپرسور", "دوار"),
@@ -986,7 +969,7 @@ fn get_assets(db: State<Db>) -> Result<Vec<AssetRow>, String> {
             criticality: row.get(7)?, status: row.get(8)?, location: row.get(9)?,
             serial_number: row.get(10)?, model: row.get(11)?, manufacturer: row.get(12)?,
             manufacturer_phone: row.get(13)?, manufacturer_email: row.get(14)?,
-            manufacturer_website: row.get(15)?, purchase_date: purchase, warranty_months: months,
+             manufacturer_website: row.get(15)?, purchase_date: purchase.clone(), warranty_months: months,
             commission_date: row.get(18)?, description: row.get(19)?,
             specs: serde_json::from_str(&specs_str).unwrap_or(serde_json::json!({})),
             path: row.get(21)?, sort_order: row.get(22)?, children_count: row.get(23)?,
@@ -2308,21 +2291,21 @@ fn get_rca_detail(db: State<Db>, rca_id: i64) -> Result<(Vec<RcaWhy>, Vec<RcaAct
     let whys = {
         let mut stmt = conn.prepare("SELECT id, step, answer FROM rca_whys WHERE rca_id=?1 ORDER BY step")
             .map_err(|e| e.to_string())?;
-        stmt.query_map(params![rca_id], |row| {
+        let rows = stmt.query_map(params![rca_id], |row| {
             Ok(RcaWhy { id: row.get(0)?, step: row.get(1)?, answer: row.get(2)? })
-        }).map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        }).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
     };
     let actions = {
         let mut stmt = conn.prepare("SELECT id, description, responsible, due_date, status FROM rca_actions WHERE rca_id=?1 ORDER BY id")
             .map_err(|e| e.to_string())?;
-        stmt.query_map(params![rca_id], |row| {
+        let rows = stmt.query_map(params![rca_id], |row| {
             Ok(RcaAction {
                 id: row.get(0)?, description: row.get(1)?, responsible: row.get(2)?,
                 due_date: row.get(3)?, status: row.get(4)?,
             })
-        }).map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        }).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
     };
     Ok((whys, actions))
 }
@@ -2455,9 +2438,9 @@ fn get_kpis(db: State<Db>) -> Result<Kpis, String> {
             "SELECT failure_mode, COUNT(*) c FROM work_orders
              WHERE failure_mode != '' GROUP BY failure_mode ORDER BY c DESC LIMIT 5"
         ).map_err(|e| e.to_string())?;
-        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .map_err(|e| e.to_string())?
-            .collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
     };
 
     Ok(Kpis {
@@ -2633,7 +2616,7 @@ fn get_condition_points(db: State<Db>, asset_id: Option<i64>) -> Result<Vec<Cond
             is_active: row.get::<_, i64>(10)? == 1,
             latest_value: latest, latest_at: row.get(12)?, status,
         })
-    };
+    });
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
@@ -2959,9 +2942,9 @@ fn get_audit_log(db: State<Db>) -> Result<Vec<AuditRow>, String> {
 
 // ---------- اجرای اپلیکیشن ----------
 fn main() {
-    let app_dir = tauri::path::BaseDirectory::AppData
-        .resolve("", &tauri::Config::default())
-        .expect("cannot resolve app data dir");
+    let app_dir = std::path::PathBuf::from(
+        std::env::var("APPDATA").expect("APPDATA not set")
+    ).join("com.cmms.app");
     std::fs::create_dir_all(&app_dir).expect("cannot create app data dir");
     let conn = Connection::open(app_dir.join("cmms.db")).expect("cannot open database");
     migrate(&conn).expect("migration failed");
